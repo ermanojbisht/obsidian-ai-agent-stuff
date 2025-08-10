@@ -1,0 +1,100 @@
+.context-content {
+  padding: 10px;
+}
+
+.context-item {
+  margin-bottom: 15px;
+  padding: 10px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 5px;
+  background: var(--background-primary-alt);
+}
+
+.context-type {
+  margin-bottom: 5px;
+}
+
+.context-type span {
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-size: 0.8em;
+  font-weight: bold;
+  text-transform: uppercase;
+}
+
+.type-reference {
+  background-color: var(--color-blue);
+  color: white;
+}
+
+.type-counterpoint {
+  background-color: var(--color-red);
+  color: white;
+}
+
+.type-definition {
+  background-color: var(--color-green);
+  color: white;
+}
+
+.type-contradiction {
+  background-color: var(--color-orange);
+  color: white;
+}
+
+.type-example {
+  background-color: var(--color-purple);
+  color: white;
+}
+
+.type-template {
+  background-color: var(--color-yellow);
+  color: black;
+}
+
+.context-note {
+  margin-bottom: 8px;
+}
+
+.context-anchor {
+  color: var(--text-muted);
+  font-size: 0.9em;
+}
+
+.context-excerpt {
+  margin-bottom: 8px;
+}
+
+.context-excerpt p {
+  margin: 0;
+  font-style: italic;
+  color: var(--text-muted);
+}
+
+.context-reason {
+  margin-bottom: 8px;
+}
+
+.context-reason em {
+  color: var(--text-normal);
+  font-size: 0.9em;
+}
+
+.context-action {
+  text-align: right;
+}
+
+.action-suggestion {
+  background-color: var(--interactive-accent);
+  color: white;
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-size: 0.8em;
+}
+
+.loading-message, .empty-message {
+  text-align: center;
+  color: var(--text-muted);
+  padding: 20px;
+  font-style: italic;
+}

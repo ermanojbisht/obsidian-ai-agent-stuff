@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Knowledge Vault Quiz</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="quiz-container">
+        <header class="quiz-header">
+            <h1>Knowledge Vault Quiz</h1>
+            <div class="score-container">
+                <span class="score">Score: <span id="current-score">0</span>/<span id="total-questions">10</span></span>
+                <span class="question-counter">Question <span id="question-number">1</span> of <span id="total-questions-counter">10</span></span>
+            </div>
+        </header>
+
+        <div class="quiz-content">
+            <!-- Welcome Screen -->
+            <div id="welcome-screen" class="screen">
+                <h2>Welcome to your interactive knowledge vault quiz!</h2>
+                <p>I'll be testing your understanding of concepts from software craftsmanship, cognitive science, systems thinking, and more.</p>
+                <div class="quiz-selection">
+                    <label for="quiz-select">Select a quiz:</label>
+                    <select id="quiz-select">
+                        <option value="default">Knowledge Vault Quiz</option>
+                    </select>
+                </div>
+                <button id="start-quiz" class="btn btn-primary">Start Quiz</button>
+            </div>
+
+            <!-- Question Screen -->
+            <div id="question-screen" class="screen hidden">
+                <div class="question-container">
+                    <h2 id="question-text"></h2>
+                    <div id="options-container" class="options-container">
+                        <!-- Options will be populated by JavaScript -->
+                    </div>
+                    <button id="submit-answer" class="btn btn-primary" disabled>Submit Answer</button>
+                </div>
+            </div>
+
+            <!-- Feedback Screen -->
+            <div id="feedback-screen" class="screen hidden">
+                <div class="feedback-container">
+                    <div id="feedback-icon" class="feedback-icon"></div>
+                    <h3 id="feedback-title"></h3>
+                    <p id="feedback-explanation"></p>
+                    <div class="feedback-actions">
+                        <button id="next-question" class="btn btn-primary">Next Question</button>
+                        <button id="finish-quiz" class="btn btn-secondary hidden">Finish Quiz</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Results Screen -->
+            <div id="results-screen" class="screen hidden">
+                <div class="results-container">
+                    <h2>Quiz Complete!</h2>
+                    <div class="final-score">
+                        <h3>Final Score: <span id="final-score"></span>/<span id="final-total"></span></h3>
+                        <div class="score-percentage">
+                            <span id="score-percentage"></span>%
+                        </div>
+                    </div>
+                    <div id="performance-feedback" class="performance-feedback">
+                        <!-- Performance feedback will be populated by JavaScript -->
+                    </div>
+                    <div class="results-actions">
+                        <button id="restart-quiz" class="btn btn-primary">Take Quiz Again</button>
+                        <button id="select-new-quiz" class="btn btn-secondary">Select Different Quiz</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="progress-bar-container">
+            <div class="progress-bar">
+                <div id="progress-fill" class="progress-fill"></div>
+            </div>
+        </div>
+    </div>
+
+    <script src="quiz-engine.js"></script>
+</body>
+</html>

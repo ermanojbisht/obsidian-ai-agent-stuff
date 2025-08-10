@@ -1,0 +1,11 @@
+{
+	"id": "context-fetcher-plugin",
+	"name": "LLM-based Context Fetcher Plugin",
+	"version": "1.0.0",
+	"minAppVersion": "0.15.0",
+	"description": "Searches the vault for potentially relevant notes.",
+	"author": "Obsidian",
+	"authorUrl": "https://obsidian.md",
+	"fundingUrl": "https://obsidian.md/pricing",
+	"isDesktopOnly": false
+}
