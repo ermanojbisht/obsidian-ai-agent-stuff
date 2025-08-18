@@ -1,13 +1,20 @@
-import { App, MarkdownView, Notice, Plugin, PluginSettingTab, Setting, WorkspaceLeaf } from 'obsidian';
+import { App, FileSystemAdapter, MarkdownView, Notice, Plugin, PluginSettingTab, Setting, WorkspaceLeaf } from 'obsidian';
 import { ContextFetcherService, ContextItem } from './ContextFetcherService';
 import { ContextFetcherView, VIEW_TYPE_CONTEXT_FETCHER } from './ContextFetcherView';
+import { ChromaDBSettings } from './ChromaDBService';
 
 interface ContextFetcherPluginSettings {
-	mySetting: string;
+	chromaHost: string;
+	chromaPort: number;
+	chromaCollectionName: string;
+	pythonPath: string;
 }
 
 const DEFAULT_SETTINGS: ContextFetcherPluginSettings = {
-	mySetting: 'default'
+	chromaHost: 'localhost',
+	chromaPort: 8000,
+	chromaCollectionName: 'notes',
+	pythonPath: 'C:\\Users\\Jo.VanEyck\\AppData\\Local\\Programs\\Python\\Python312\\python.exe',
 };
 
 export default class ContextFetcherPlugin extends Plugin {
@@ -17,7 +24,16 @@ export default class ContextFetcherPlugin extends Plugin {
 
 	async onload() {
 		await this.loadSettings();
-		this.service = new ContextFetcherService();
+		const vaultPath = (this.app.vault.adapter as FileSystemAdapter).getBasePath();
+		const pluginDir = require('path').join(vaultPath, '.obsidian', 'plugins', 'context-fetcher-plugin');
+		const chromaSettings: ChromaDBSettings = {
+			host: this.settings.chromaHost,
+			port: this.settings.chromaPort,
+			collectionName: this.settings.chromaCollectionName,
+			pythonPath: this.settings.pythonPath,
+			pluginDir: pluginDir
+		};
+		this.service = new ContextFetcherService(chromaSettings);
 
 		this.registerView(
 			VIEW_TYPE_CONTEXT_FETCHER,
@@ -40,7 +56,7 @@ export default class ContextFetcherPlugin extends Plugin {
 			}
 		});
 
-		this.addSettingTab(new SampleSettingTab(this.app, this));
+		this.addSettingTab(new SettingTab(this.app, this));
 	}
 
 	async activateView() {
@@ -58,15 +74,6 @@ export default class ContextFetcherPlugin extends Plugin {
 			await leaf.setViewState({ type: VIEW_TYPE_CONTEXT_FETCHER, active: true });
 		}
 		workspace.revealLeaf(leaf);
-	}
-
-	stopCurrentProcess() {
-		if (this.service) {
-			this.service.stopCurrentProcess();
-		}
-		if (this.contextView) {
-			this.contextView.setLoading(false);
-		}
 	}
 
 	async fetchContextForCurrentNote() {
@@ -89,22 +96,22 @@ export default class ContextFetcherPlugin extends Plugin {
 		const contextView = this.app.workspace.getLeavesOfType(VIEW_TYPE_CONTEXT_FETCHER)[0]?.view as ContextFetcherView;
 		const setLoading = (loading: boolean) => contextView && contextView.setLoading(loading);
 		const updateContext = (items: ContextItem[]) => contextView && contextView.updateContext(items);
-		const setProcess = (proc: any, timeoutId: any) => {
-			this.service.currentExecProcess = proc;
-			this.service.currentTimeoutId = timeoutId;
-		};
-		const clearProcess = () => {
-			this.service.currentExecProcess = null;
-			this.service.currentTimeoutId = null;
-		};
+
 		if (contextView) contextView.setLoading(true);
+		const vaultPath = (this.app.vault.adapter as FileSystemAdapter).getBasePath();
+		const pluginDir = require('path').join(vaultPath, '.obsidian', 'plugins', 'context-fetcher-plugin');
+		const chromaSettings: ChromaDBSettings = {
+			host: this.settings.chromaHost,
+			port: this.settings.chromaPort,
+			collectionName: this.settings.chromaCollectionName,
+			pythonPath: this.settings.pythonPath,
+			pluginDir: pluginDir
+		};
 		await this.service.fetchContext({
 			app: this.app,
 			file,
 			setLoading,
-			updateContext,
-			setProcess,
-			clearProcess
+			updateContext
 		});
 	}
 
@@ -112,8 +119,9 @@ export default class ContextFetcherPlugin extends Plugin {
 		this.app.workspace.detachLeavesOfType(VIEW_TYPE_CONTEXT_FETCHER);
 	}
 
-	async loadSettings() {
+	async loadSettings(): Promise<ContextFetcherPluginSettings> {
 		this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+		return this.settings;
 	}
 
 	async saveSettings() {
@@ -121,7 +129,7 @@ export default class ContextFetcherPlugin extends Plugin {
 	}
 }
 
-class SampleSettingTab extends PluginSettingTab {
+class SettingTab extends PluginSettingTab {
 	plugin: ContextFetcherPlugin;
 	constructor(app: App, plugin: ContextFetcherPlugin) {
 		super(app, plugin);
@@ -130,15 +138,55 @@ class SampleSettingTab extends PluginSettingTab {
 	display(): void {
 		const { containerEl } = this;
 		containerEl.empty();
+
+		containerEl.createEl('h2', { text: 'Context Fetcher Settings' });
+
 		new Setting(containerEl)
-			.setName('Setting #1')
-			.setDesc('It\'s a secret')
+			.setName('ChromaDB Host')
+			.setDesc('ChromaDB server host address')
 			.addText(text => text
-				.setPlaceholder('Enter your secret')
-				.setValue(this.plugin.settings.mySetting)
+				.setPlaceholder('localhost')
+				.setValue(this.plugin.settings.chromaHost)
 				.onChange(async (value) => {
-					this.plugin.settings.mySetting = value;
+					this.plugin.settings.chromaHost = value;
 					await this.plugin.saveSettings();
 				}));
+
+		new Setting(containerEl)
+			.setName('ChromaDB Port')
+			.setDesc('ChromaDB server port')
+			.addText(text => text
+				.setPlaceholder('8000')
+				.setValue(this.plugin.settings.chromaPort.toString())
+				.onChange(async (value) => {
+					const port = parseInt(value);
+					if (!isNaN(port)) {
+						this.plugin.settings.chromaPort = port;
+						await this.plugin.saveSettings();
+					}
+				}));
+
+		new Setting(containerEl)
+			.setName('Collection Name')
+			.setDesc('ChromaDB collection name for your notes')
+			.addText(text => text
+				.setPlaceholder('notes')
+				.setValue(this.plugin.settings.chromaCollectionName)
+				.onChange(async (value) => {
+					this.plugin.settings.chromaCollectionName = value;
+					await this.plugin.saveSettings();
+				}));
+
+		new Setting(containerEl)
+			.setName('Python Path')
+			.setDesc('Path to Python executable')
+			.addText(text => text
+				.setPlaceholder('C:\\Users\\Jo.VanEyck\\AppData\\Local\\Programs\\Python\\Python312\\python.exe')
+				.setValue(this.plugin.settings.pythonPath)
+				.onChange(async (value) => {
+					this.plugin.settings.pythonPath = value;
+					await this.plugin.saveSettings();
+				}));
+
 	}
 }

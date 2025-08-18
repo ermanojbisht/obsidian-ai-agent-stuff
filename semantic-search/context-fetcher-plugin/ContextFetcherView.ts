@@ -19,7 +19,9 @@ export class ContextFetcherView extends ItemView {
     async onOpen() {
         const container = this.containerEl.children[1];
         container.empty();
-        const headerDiv = container.createDiv({ cls: 'context-header' });
+        
+        // Create fixed header
+        const headerDiv = container.createDiv({ cls: 'context-header-fixed' });
         headerDiv.createEl("h4", { text: "Semantic Context Fetcher" });
         const refreshButton = headerDiv.createEl("button", {
             text: "↻",
@@ -29,14 +31,10 @@ export class ContextFetcherView extends ItemView {
         refreshButton.addEventListener('click', () => {
             this.plugin.fetchContextForCurrentNote();
         });
-        const stopButton = headerDiv.createEl("button", {
-            text: "✋",
-            cls: "context-stop-button",
-            attr: { "aria-label": "Stop context fetch" }
-        });
-        stopButton.addEventListener('click', () => {
-            this.plugin.stopCurrentProcess();
-        });
+        
+        // Create scrollable content area
+        const scrollableDiv = container.createDiv({ cls: 'context-scrollable-content' });
+        
         this.renderContent();
     }
 
@@ -54,9 +52,14 @@ export class ContextFetcherView extends ItemView {
 
     private renderContent() {
         const container = this.containerEl.children[1];
-        const existingContent = container.querySelector('.context-content');
+        const scrollableContainer = container.querySelector('.context-scrollable-content');
+        if (!scrollableContainer) return;
+        
+        const existingContent = scrollableContainer.querySelector('.context-content');
         if (existingContent) existingContent.remove();
-        const contentDiv = container.createDiv({ cls: 'context-content' });
+        
+        const contentDiv = scrollableContainer.createDiv({ cls: 'context-content' });
+        
         if (this.isLoading) {
             contentDiv.createEl('div', { text: 'Loading context...', cls: 'loading-message' });
             return;
@@ -67,8 +70,6 @@ export class ContextFetcherView extends ItemView {
         }
         this.contextItems.forEach((item) => {
             const itemDiv = contentDiv.createDiv({ cls: 'context-item' });
-            const typeDiv = itemDiv.createDiv({ cls: 'context-type' });
-            typeDiv.createEl('span', { text: item.type, cls: `type-${item.type}` });
             const noteDiv = itemDiv.createDiv({ cls: 'context-note' });
             const noteLink = noteDiv.createEl('a', { text: item.note, cls: 'context-note-link', href: '#' });
             noteLink.addEventListener('click', async (e) => {
@@ -89,9 +90,7 @@ export class ContextFetcherView extends ItemView {
             const excerptDiv = itemDiv.createDiv({ cls: 'context-excerpt' });
             excerptDiv.createEl('p', { text: item.excerpt });
             const reasonDiv = itemDiv.createDiv({ cls: 'context-reason' });
-            reasonDiv.createEl('em', { text: item.reason });
-            const actionDiv = itemDiv.createDiv({ cls: 'context-action' });
-            actionDiv.createEl('span', { text: `Action: ${item.action}`, cls: 'action-suggestion' });
+            reasonDiv.createEl('small', { text: item.reason, cls: 'distance-info' });
         });
     }
 }

@@ -1,4 +1,4 @@
-# λ docker run -d -v ./chroma-data:/data -p 8000:8000 chromadb/chroma
+# λ docker compose up --build -d
 import chromadb
 
 def main():
