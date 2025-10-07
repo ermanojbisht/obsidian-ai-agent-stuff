@@ -60,3 +60,5 @@ Some Files and Code is already created but need to be checked wether it's workin
 
 
 At each successfull build copy plugin files to /home/manoj/learning_vault/.obsidian/plugins/context-fetcher-plugin to test things .
+
+do not touch other folder in repo as they are not required for current task.
