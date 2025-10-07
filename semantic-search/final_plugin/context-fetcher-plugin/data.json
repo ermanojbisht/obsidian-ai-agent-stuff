@@ -1,0 +1,19 @@
+{
+  "chromaHost": "localhost",
+  "chromaPort": 8000,
+  "chromaCollectionName": "notes",
+  "pythonPath": "/usr/bin/python3",
+  "searchMaxResults": 10,
+  "foldersToIndex": [
+    "learnings",
+    "Meetings",
+    "My Daily Notes",
+    "my_prompts",
+    "PWD"
+  ],
+  "totalDocuments": 0,
+  "host": "localhost",
+  "port": 8000,
+  "collectionName": "notes",
+  "pluginDir": "/home/manoj/learning_vault/.obsidian/plugins/context-fetcher-plugin"
+}
