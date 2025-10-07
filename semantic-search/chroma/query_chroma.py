@@ -8,6 +8,7 @@ from sentence_transformers import SentenceTransformer
 
 def main():
     """Query the ChromaDB collection."""
+    print("Main started")
     client = chromadb.HttpClient(host="localhost", port=8000)
     collection = client.get_collection(name="notes")
 
@@ -21,6 +22,8 @@ def main():
     )
 
     print(results)
+
+    print("Main ended")
 
 if __name__ == "__main__":
     main()
