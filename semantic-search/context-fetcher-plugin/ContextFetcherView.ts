@@ -1,5 +1,5 @@
 import { ItemView, WorkspaceLeaf, Notice, TFile, App } from 'obsidian';
-import type { ContextItem } from './ContextFetcherService';
+import { ContextFetcherService, ContextItem } from './services/ContextFetcherService';
 
 export const VIEW_TYPE_CONTEXT_FETCHER = "context-fetcher-view";
 
@@ -16,23 +16,84 @@ export class ContextFetcherView extends ItemView {
     getViewType() { return VIEW_TYPE_CONTEXT_FETCHER; }
     getDisplayText() { return "Semantic Context Fetcher"; }
 
+    private formatDate(timestamp: number): string {
+        if (!timestamp) return 'Never';
+        const date = new Date(timestamp);
+        return date.toLocaleString(); // Adjust format as needed
+    }
+
     async onOpen() {
         const container = this.containerEl.children[1];
         container.empty();
-        
-        // Create fixed header
-        const headerDiv = container.createDiv({ cls: 'context-header-fixed' });
-        headerDiv.createEl("h4", { text: "Semantic Context Fetcher" });
-        const refreshButton = headerDiv.createEl("button", {
-            text: "↻",
-            cls: "context-refresh-button",
-            attr: { "aria-label": "Fetch new context" }
+
+        // Row 1: Plugin Name and Description
+        const headerDiv = container.createDiv({ cls: 'context-header' });
+        headerDiv.createEl("h2", { text: "Semantic Context Fetcher" });
+        headerDiv.createEl("p", { text: "AI-powered semantic search and contextual retrieval from your notes.", cls: 'plugin-description' });
+
+        // Row 2: Indexed Document Count and Refresh
+        const statsRow = container.createDiv({ cls: 'context-stats-row' });
+        const totalDocsSpan = statsRow.createEl('span', { text: `Total Indexed Documents: ${this.plugin.settings.totalDocuments}`, cls: 'total-docs-value' });
+        const lastUpdatedSpan = statsRow.createEl('span', { text: `Last Updated: ${this.formatDate(this.plugin.settings.lastIndexedDate)}`, cls: 'last-updated-value' });
+        const refreshStatsButton = statsRow.createEl('button', { text: 'Refresh', cls: 'context-button small-button' });
+        refreshStatsButton.addEventListener('click', async () => {
+            await this.plugin.updateTotalDocumentsSetting();
+            this.renderContent(); // Re-render to update last updated date
         });
-        refreshButton.addEventListener('click', () => {
+
+        // Row 3: Indexing Controls
+        const indexingControlsDiv = container.createDiv({ cls: 'context-controls-row indexing-controls' });
+        indexingControlsDiv.createEl('span', { text: 'Indexing:', cls: 'control-label' });
+        const reindexAllButton = indexingControlsDiv.createEl('button', { text: 'Reindex All', cls: 'context-button' });
+        reindexAllButton.addEventListener('click', async () => {
+            await this.plugin.reindexAllNotes();
+        });
+
+        const indexCurrentNoteButton = indexingControlsDiv.createEl('button', { text: 'Index Current Note', cls: 'context-button' });
+        indexCurrentNoteButton.addEventListener('click', async () => {
+            await this.plugin.indexCurrentNote();
+        });
+
+        const indexFolderButton = indexingControlsDiv.createEl('button', { text: 'Index Folder', cls: 'context-button' });
+        indexFolderButton.addEventListener('click', async () => {
+            const activeFile = this.app.workspace.getActiveFile();
+            if (!activeFile) {
+                new Notice('No active note. Please open a note in the folder you wish to index.');
+                return;
+            }
+            const folderPath = activeFile.parent?.path;
+            if (folderPath) {
+                await this.plugin.indexFolder(folderPath);
+            } else {
+                new Notice('Could not determine folder path for the active note.');
+            }
+        });
+
+        // Row 4: Search Controls
+        const searchControlsDiv = container.createDiv({ cls: 'context-controls-row search-controls' });
+        searchControlsDiv.createEl('span', { text: 'Search:', cls: 'control-label' });
+        const searchInput = searchControlsDiv.createEl('input', { type: 'text', placeholder: 'Search context...', cls: 'context-search-input' });
+        const searchButton = searchControlsDiv.createEl('button', { text: 'Search', cls: 'context-button' });
+        searchButton.addEventListener('click', async () => {
+            const query = searchInput.value.trim();
+            if (query) {
+                await this.plugin.service.searchQuery(query, this.setLoading.bind(this), this.updateContext.bind(this));
+            } else {
+                new Notice('Please enter a search query.');
+            }
+        });
+
+        const useCurrentNoteButton = searchControlsDiv.createEl('button', { text: 'Use Current Note', cls: 'context-button' });
+        useCurrentNoteButton.addEventListener('click', () => {
             this.plugin.fetchContextForCurrentNote();
         });
-        
-        // Create scrollable content area
+
+        const clearButton = searchControlsDiv.createEl('button', { text: 'Clear', cls: 'context-button' });
+        clearButton.addEventListener('click', () => {
+            this.updateContext([]);
+        });
+
+        // Row 5: Search Results (scrollable area)
         const scrollableDiv = container.createDiv({ cls: 'context-scrollable-content' });
         
         this.renderContent();
@@ -48,6 +109,20 @@ export class ContextFetcherView extends ItemView {
     updateContext(items: ContextItem[]) {
         this.contextItems = items;
         this.renderContent();
+    }
+
+    updateTotalDocuments(count: number) {
+        const totalDocsSpan = this.containerEl.querySelector('.total-docs-value');
+        if (totalDocsSpan) {
+            totalDocsSpan.setText(count.toString());
+        }
+    }
+
+    updateLastIndexedDate(timestamp: number) {
+        const lastUpdatedSpan = this.containerEl.querySelector('.last-updated-value');
+        if (lastUpdatedSpan) {
+            lastUpdatedSpan.setText(`Last Updated: ${this.formatDate(timestamp)}`);
+        }
     }
 
     private renderContent() {

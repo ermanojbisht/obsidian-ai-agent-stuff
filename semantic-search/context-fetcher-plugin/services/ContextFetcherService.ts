@@ -1,6 +1,7 @@
 import { Notice, TFile, WorkspaceLeaf, MarkdownView, App } from 'obsidian';
 import { ChromaDBService, ChromaDBSettings } from './ChromaDBService';
-import { promises } from 'fs'
+
+
 export interface ContextItem {
     type: "reference" | "counterpoint" | "definition" | "contradiction" | "example" | "template";
     note: string;
@@ -39,7 +40,80 @@ export class ContextFetcherService {
         }
     }
 
-    async readFile(path: string) {
-        return await promises.readFile(path, 'utf8');
+    async clearAllIndexes(): Promise<any> {
+        try {
+            new Notice('Clearing all indexes...');
+            const result = await this.chromaService.clearCollection();
+            new Notice('All indexes cleared.');
+            return result;
+        } catch (error) {
+            console.error('Error clearing indexes:', error);
+            new Notice(`Error clearing indexes: ${error.message}`);
+            throw error;
+        }
+    }
+
+    async indexAllFolders(vaultPath: string): Promise<any> {
+        try {
+            new Notice('Indexing all configured folders...');
+            const result = await this.chromaService.indexVault(vaultPath);
+            new Notice('Indexing complete.');
+            return result;
+        } catch (error) {
+            console.error('Error indexing folders:', error);
+            new Notice(`Error indexing folders: ${error.message}`);
+            throw error;
+        }
+    }
+
+    async indexCurrentFile(filePath: string): Promise<any> {
+        try {
+            new Notice(`Indexing file: ${filePath}...`);
+            const result = await this.chromaService.indexFile(filePath);
+            new Notice(`File ${filePath} indexed.`);
+            return result;
+        } catch (error) {
+            console.error('Error indexing file:', error);
+            new Notice(`Error indexing file: ${error.message}`);
+            throw error;
+        }
+    }
+
+    async indexFolder(folderPath: string): Promise<any> {
+        try {
+            new Notice(`Indexing folder: ${folderPath}...`);
+            const result = await this.chromaService.indexSpecificFolder(folderPath);
+            new Notice(`Folder ${folderPath} indexed.`);
+            return result;
+        } catch (error) {
+            console.error('Error indexing folder:', error);
+            new Notice(`Error indexing folder: ${error.message}`);
+            throw error;
+        }
+    }
+
+    async getDocumentsCount(): Promise<number> {
+        try {
+            const count = await this.chromaService.getDocumentsCount();
+            return count;
+        } catch (error) {
+            console.error('Error getting document count:', error);
+            new Notice(`Error getting document count: ${error.message}`);
+            return 0;
+        }
+    }
+
+    async searchQuery(query: string, setLoading: (loading: boolean) => void, updateContext: (items: ContextItem[]) => void) {
+        try {
+            setLoading(true);
+            const results = await this.chromaService.searchSimilarContent(query);
+            const contextItems = this.chromaService.processChromaResults(results, ''); // Pass empty string for currentNotePath as it's a direct search
+            updateContext(contextItems);
+        } catch (error) {
+            console.error('ChromaDB search query failed:', error);
+            new Notice(`Search failed: ${error.message}`);
+        } finally {
+            setLoading(false);
+        }
     }
 }

@@ -1,22 +1,28 @@
 import { App, FileSystemAdapter, MarkdownView, Notice, Plugin, PluginSettingTab, Setting, WorkspaceLeaf } from 'obsidian';
-import { ContextFetcherService, ContextItem } from './ContextFetcherService';
+import { ContextFetcherService, ContextItem } from './services/ContextFetcherService';
 import { ContextFetcherView, VIEW_TYPE_CONTEXT_FETCHER } from './ContextFetcherView';
-import { ChromaDBSettings } from './ChromaDBService';
+import { ChromaDBSettings } from './services/ChromaDBService';
 
 interface ContextFetcherPluginSettings {
 	chromaHost: string;
 	chromaPort: number;
 	chromaCollectionName: string;
 	pythonPath: string;
-}
-
+	searchMaxResults: number;
+	foldersToIndex: string;
+	    totalDocuments: number;
+	    lastIndexedDate: number; // Timestamp
+	}
 const DEFAULT_SETTINGS: ContextFetcherPluginSettings = {
 	chromaHost: 'localhost',
 	chromaPort: 8000,
 	chromaCollectionName: 'notes',
-	pythonPath: 'C:\\Users\\Jo.VanEyck\\AppData\\Local\\Programs\\Python\\Python312\\python.exe',
-};
-
+	pythonPath: 'python3',
+	searchMaxResults: 10,
+	foldersToIndex: 'learnings,Meetings,My Daily Notes,my_prompts,PWD',
+	    totalDocuments: 0,
+	    lastIndexedDate: 0,
+	};
 export default class ContextFetcherPlugin extends Plugin {
 	settings: ContextFetcherPluginSettings;
 	service: ContextFetcherService;
@@ -26,15 +32,16 @@ export default class ContextFetcherPlugin extends Plugin {
 		await this.loadSettings();
 		const vaultPath = (this.app.vault.adapter as FileSystemAdapter).getBasePath();
 		const pluginDir = require('path').join(vaultPath, '.obsidian', 'plugins', 'context-fetcher-plugin');
-		const chromaSettings: ChromaDBSettings = {
-			host: this.settings.chromaHost,
-			port: this.settings.chromaPort,
-			collectionName: this.settings.chromaCollectionName,
-			pythonPath: this.settings.pythonPath,
-			pluginDir: pluginDir
-		};
-		this.service = new ContextFetcherService(chromaSettings);
-
+		        const chromaSettings: ChromaDBSettings = {
+		            host: this.settings.chromaHost,
+		            port: this.settings.chromaPort,
+		            collectionName: this.settings.chromaCollectionName,
+		            pythonPath: this.settings.pythonPath,
+		            pluginDir: pluginDir,
+		            searchMaxResults: this.settings.searchMaxResults,
+		            foldersToIndex: this.settings.foldersToIndex
+		        };
+		        this.service = new ContextFetcherService(chromaSettings);
 		this.registerView(
 			VIEW_TYPE_CONTEXT_FETCHER,
 			(leaf) => {
@@ -53,6 +60,22 @@ export default class ContextFetcherPlugin extends Plugin {
 			name: 'Fetch Context for Current Note',
 			callback: () => {
 				this.fetchContextForCurrentNote();
+			}
+		});
+
+		this.addCommand({
+			id: 'reindex-all-notes',
+			name: 'Reindex All Notes',
+			callback: async () => {
+				await this.reindexAllNotes();
+			}
+		});
+
+		this.addCommand({
+			id: 'index-current-note',
+			name: 'Index Current Note',
+			callback: async () => {
+				await this.indexCurrentNote();
 			}
 		});
 
@@ -98,25 +121,65 @@ export default class ContextFetcherPlugin extends Plugin {
 		const updateContext = (items: ContextItem[]) => contextView && contextView.updateContext(items);
 
 		if (contextView) contextView.setLoading(true);
-		const vaultPath = (this.app.vault.adapter as FileSystemAdapter).getBasePath();
-		const pluginDir = require('path').join(vaultPath, '.obsidian', 'plugins', 'context-fetcher-plugin');
-		const chromaSettings: ChromaDBSettings = {
-			host: this.settings.chromaHost,
-			port: this.settings.chromaPort,
-			collectionName: this.settings.chromaCollectionName,
-			pythonPath: this.settings.pythonPath,
-			pluginDir: pluginDir
-		};
-		await this.service.fetchContext({
-			app: this.app,
-			file,
-			setLoading,
-			updateContext
-		});
-	}
+		        await this.service.fetchContext({
+		            app: this.app,
+		            file,
+		            setLoading,
+		            updateContext
+		        });	}
 
-	onunload() {
-		this.app.workspace.detachLeavesOfType(VIEW_TYPE_CONTEXT_FETCHER);
+	        async updateTotalDocumentsSetting() {
+	            const count = await this.service.getDocumentsCount();
+	            this.settings.totalDocuments = count;
+	            this.settings.lastIndexedDate = Date.now(); // Update timestamp
+	            await this.saveSettings();
+	            if (this.contextView) {
+	                this.contextView.updateTotalDocuments(count);
+	                this.contextView.updateLastIndexedDate(this.settings.lastIndexedDate);
+	            }
+	        }	
+	    async reindexAllNotes() {
+	        try {
+	            new Notice('Starting full reindex...');
+	            await this.service.clearAllIndexes();
+	            const vaultPath = (this.app.vault.adapter as FileSystemAdapter).getBasePath();
+	            await this.service.indexAllFolders(vaultPath);
+	            await this.updateTotalDocumentsSetting();
+	            new Notice('Full reindex complete.');
+	        } catch (error) {
+	            console.error('Error during full reindex:', error);
+	            new Notice(`Reindex failed: ${error.message}`);
+	        }
+	    }
+	
+	    async indexCurrentNote() {
+	        const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
+	        if (!activeView || !activeView.file) {
+	            new Notice('No active note to index.');
+	            return;
+	        }
+	        try {
+	            new Notice(`Indexing current note: ${activeView.file.basename}...`);
+	            await this.service.indexCurrentFile(activeView.file.path);
+	            await this.updateTotalDocumentsSetting();
+	            new Notice('Current note indexed.');
+	                } catch (error) {
+	                    console.error('Error indexing current note:', error);
+	                    new Notice(`Indexing failed: ${error.message}`);
+	                }
+	            }
+	        
+	            async indexFolder(folderPath: string) {
+	                try {
+	                    await this.service.indexFolder(folderPath);
+	                    await this.updateTotalDocumentsSetting();
+	                } catch (error) {
+	                    console.error('Error indexing folder:', error);
+	                    new Notice(`Indexing folder failed: ${error.message}`);
+	                }
+	            }
+	        
+	            onunload() {		this.app.workspace.detachLeavesOfType(VIEW_TYPE_CONTEXT_FETCHER);
 	}
 
 	async loadSettings(): Promise<ContextFetcherPluginSettings> {
@@ -181,12 +244,43 @@ class SettingTab extends PluginSettingTab {
 			.setName('Python Path')
 			.setDesc('Path to Python executable')
 			.addText(text => text
-				.setPlaceholder('C:\\Users\\Jo.VanEyck\\AppData\\Local\\Programs\\Python\\Python312\\python.exe')
+				.setPlaceholder('/usr/bin/python3')
 				.setValue(this.plugin.settings.pythonPath)
 				.onChange(async (value) => {
 					this.plugin.settings.pythonPath = value;
 					await this.plugin.saveSettings();
 				}));
 
+		new Setting(containerEl)
+			.setName('Search Max Results')
+			.setDesc('Number of top results to return for each query.')
+			.addText(text => text
+				.setPlaceholder('10')
+				.setValue(this.plugin.settings.searchMaxResults.toString())
+				.onChange(async (value) => {
+					const num = parseInt(value);
+					if (!isNaN(num)) {
+						this.plugin.settings.searchMaxResults = num;
+						await this.plugin.saveSettings();
+					}
+				}));
+
+		new Setting(containerEl)
+			.setName('Folders to Index')
+			.setDesc('Comma-separated list of folders to include in indexing.')
+			.addTextArea(text => text
+				.setPlaceholder('learnings,Meetings,My Daily Notes')
+				.setValue(this.plugin.settings.foldersToIndex)
+				.onChange(async (value) => {
+					this.plugin.settings.foldersToIndex = value;
+					await this.plugin.saveSettings();
+				}));
+
+		new Setting(containerEl)
+			.setName('Total Documents')
+			.setDesc('Total number of indexed documents (read-only).')
+			.addText(text => text
+				.setValue(this.plugin.settings.totalDocuments.toString())
+				.setDisabled(true));
 	}
 }

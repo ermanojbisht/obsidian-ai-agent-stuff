@@ -8,6 +8,8 @@ export interface ChromaDBSettings {
     collectionName: string;
     pythonPath: string;
     pluginDir?: string;
+    searchMaxResults: number;
+    foldersToIndex: string;
 }
 
 export class ChromaDBService {
@@ -21,30 +23,19 @@ export class ChromaDBService {
         // No initialization needed for subprocess approach
     }
 
-    private async runPythonQuery(queryText: string, maxResults: number): Promise<any> {
+    private async runPythonScript(scriptName: string, action: string, payload: any): Promise<any> {
         return new Promise((resolve, reject) => {
-            // Ensure query text is a clean string
-            const cleanQueryText = typeof queryText === 'string' ? queryText.trim() : String(queryText).trim();
-            if (!cleanQueryText) {
-                reject(new Error('Query text cannot be empty'));
-                return;
-            }
-
             const request = {
-                action: "query",
+                action: action,
                 host: this.settings.host,
                 port: this.settings.port,
                 collection_name: this.settings.collectionName,
-                query_text: cleanQueryText,
-                n_results: maxResults
+                ...payload
             };
 
             const scriptPath = this.settings.pluginDir
-                ? require('path').join(this.settings.pluginDir, 'chroma_query.py')
-                : require('path').join(__dirname, 'chroma_query.py');
-
-            console.log('ChromaDBService: Request payload:');
-            console.dir(request)
+                ? require('path').join(this.settings.pluginDir, 'python', scriptName)
+                : require('path').join(__dirname, 'python', scriptName);
 
             const python = spawn(this.settings.pythonPath, [scriptPath], {
                 stdio: ['pipe', 'pipe', 'pipe'],
@@ -61,15 +52,12 @@ export class ChromaDBService {
 
             python.stderr.on('data', (data) => {
                 const chunk = data.toString('utf8');
-                console.log('ChromaDBService: Python stderr chunk:', chunk);
                 stderr += chunk;
             });
 
             python.on('close', (code) => {
-                console.log('ChromaDBService: Final stdout:');
-                console.dir(JSON.parse(stdout));
                 if (stderr) {
-                    console.log('ChromaDBService: Final stderr:', stderr);
+                    console.error(`ChromaDBService: Python stderr for ${scriptName}:`, stderr);
                 }
 
                 if (code !== 0) {
@@ -83,9 +71,9 @@ export class ChromaDBService {
                         reject(new Error(response.error));
                         return;
                     }
-                    resolve(response.results);
+                    resolve(response);
                 } catch (error) {
-                    reject(new Error(`Failed to parse Python response: ${error}`));
+                    reject(new Error(`Failed to parse Python response: ${error}. Raw stdout: ${stdout}`));
                 }
             });
 
@@ -95,10 +83,9 @@ export class ChromaDBService {
 
                 let errorMessage = `Failed to spawn Python process: ${error}`;
                 const pythonScriptPath = this.settings.pluginDir
-                    ? path.join(this.settings.pluginDir, 'chroma_query.py')
-                    : path.join(__dirname, 'chroma_query.py');
+                    ? path.join(this.settings.pluginDir, 'python', scriptName)
+                    : path.join(__dirname, 'python', scriptName);
 
-                // Add diagnostic information
                 errorMessage += `\nPython path: ${this.settings.pythonPath}`;
                 errorMessage += `\nScript path: ${pythonScriptPath}`;
                 errorMessage += `\nCurrent directory: ${__dirname}`;
@@ -111,7 +98,6 @@ export class ChromaDBService {
                 reject(new Error(errorMessage));
             });
 
-            // Send the request to stdin with explicit UTF-8 encoding
             const requestJson = JSON.stringify(request, null, 0);
             python.stdin.setDefaultEncoding('utf8');
             python.stdin.write(requestJson, 'utf8');
@@ -119,11 +105,18 @@ export class ChromaDBService {
         });
     }
 
-    async searchSimilarContent(queryText: string, maxResults: number = 8): Promise<any> {
+    async searchSimilarContent(queryText: string): Promise<any> {
         try {
-            const results = await this.runPythonQuery(queryText, maxResults);
+            const queryEmbeddings = await this.generateEmbedding(queryText);
 
-            // Convert the Python response format to match the original ChromaDB format
+            const payload = {
+                query_embeddings: queryEmbeddings,
+                n_results: this.settings.searchMaxResults
+            };
+            const response = await this.runPythonScript('chroma_query.py', 'query', payload);
+
+            const results = response.results;
+
             const formattedResults = {
                 documents: [results.map((r: any) => r.document)],
                 metadatas: [results.map((r: any) => r.metadata)],
@@ -185,14 +178,12 @@ export class ChromaDBService {
     async fetchContextForNote(app: App, file: TFile): Promise<ContextItem[]> {
         try {
             const content = await app.vault.read(file);
-            // Ensure proper string encoding and normalize line endings
             const cleanContent = content.toString().replace(/\r\n/g, '\n').replace(/\r/g, '\n');
 
-            // Prepend note title to query text
-            const noteTitle = file.basename; // This strips .md automatically
+            const noteTitle = file.basename;
             const queryText = `${noteTitle}\n\n${cleanContent}`;
 
-            const results = await this.searchSimilarContent(queryText, 12);
+            const results = await this.searchSimilarContent(queryText);
             const contextItems = this.processChromaResults(results, file.path);
 
             return contextItems;
@@ -200,6 +191,50 @@ export class ChromaDBService {
             console.error('Error fetching context:', error);
             new Notice(`Error fetching context: ${error.message}`);
             return [];
+        }
+    }
+
+    async clearCollection(): Promise<any> {
+        return this.runPythonScript('manage_index.py', 'clear', {});
+    }
+
+    async indexVault(vaultPath: string): Promise<any> {
+        const payload = {
+            vault_path: vaultPath,
+            folders_to_index: this.settings.foldersToIndex.split(',').map(f => f.trim()).filter(f => f.length > 0)
+        };
+        return this.runPythonScript('manage_index.py', 'index', payload);
+    }
+
+    async indexFile(filePath: string): Promise<any> {
+        const payload = {
+            file_path: filePath
+        };
+        return this.runPythonScript('manage_index.py', 'index', payload);
+    }
+
+    async indexSpecificFolder(folderPath: string): Promise<any> {
+        const payload = {
+            vault_path: this.settings.pluginDir, // Assuming pluginDir can be used to derive vault path or passed explicitly
+            folders_to_index: [folderPath]
+        };
+        return this.runPythonScript('manage_index.py', 'index', payload);
+    }
+
+    async getDocumentsCount(): Promise<number> {
+        const response = await this.runPythonScript('get_doc_count.py', 'get_count', {});
+        return response.total_documents || 0;
+    }
+
+    async generateEmbedding(text: string): Promise<number[]> {
+        const payload = {
+            text: text
+        };
+        const response = await this.runPythonScript('generate_embedding.py', 'embed', payload);
+        if (response.embeddings && Array.isArray(response.embeddings) && response.embeddings.length > 0) {
+            return response.embeddings[0]; // Assuming the script returns a list of embeddings, and we need the first one
+        } else {
+            throw new Error('Failed to generate embeddings or received empty embeddings.');
         }
     }
 }
