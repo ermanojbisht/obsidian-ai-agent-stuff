@@ -1,44 +1,13 @@
-# docker compose up --build -d
-# Zipkin UI at http://localhost:9411 
 services:
-  zipkin:
-    image: openzipkin/zipkin
-    ports:
-      - "9411:9411"
-    depends_on: [otel-collector]
-    networks:
-      - internal
-  otel-collector:
-    image: otel/opentelemetry-collector-contrib:0.111.0
-    command: ["--config=/etc/otel-collector-config.yaml"]
-    volumes:
-      - ${PWD}/otel-collector-config.yaml:/etc/otel-collector-config.yaml
-    networks:
-      - internal
   server:
-    image: chromadb/chroma
+    image: chromadb/chroma:0.4.15
     volumes:
       - chroma_data:/data
     ports:
       - "8000:8000"
-    networks:
-      - internal
     environment:
-      - CHROMA_OPEN_TELEMETRY__ENDPOINT=http://otel-collector:4317/
-      - CHROMA_OPEN_TELEMETRY__SERVICE_NAME=chroma
-      - CHROMA_SERVER_CORS_ALLOW_ORIGINS=*
       - ALLOW_RESET=TRUE
-    depends_on:
-      - otel-collector
-      - zipkin
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v2/heartbeat"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-
-networks:
-  internal:
+    command: ["/bin/sh", "-c", "pip install numpy==1.26.1 && uvicorn chromadb.app:app --host 0.0.0.0 --port 8000"]
 
 volumes:
   chroma_data:

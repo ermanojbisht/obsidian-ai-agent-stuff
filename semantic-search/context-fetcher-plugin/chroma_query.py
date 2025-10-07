@@ -40,6 +40,7 @@ import json
 import chromadb
 from typing import Dict, Any, List
 import io
+import os
 
 # Ensure both stdin and stdout use UTF-8 encoding to handle Unicode characters properly
 if sys.platform == 'win32':
@@ -57,13 +58,13 @@ def connect_to_chroma(host: str, port: int) -> chromadb.HttpClient:
         raise Exception(f"Failed to connect to ChromaDB at {host}:{port}: {e}")
 
 
-def query_collection(client: chromadb.HttpClient, collection_name: str, query_text: str, n_results: int) -> List[Dict[str, Any]]:
+def query_collection(client: chromadb.HttpClient, collection_name: str, query_embeddings: List[List[float]], n_results: int) -> List[Dict[str, Any]]:
     """Query the ChromaDB collection."""
     try:
         collection = client.get_collection(name=collection_name)
         
         results = collection.query(
-            query_texts=[query_text],
+            query_embeddings=query_embeddings,
             n_results=n_results,
             include=["documents", "metadatas", "distances"]
         )
@@ -85,6 +86,15 @@ def query_collection(client: chromadb.HttpClient, collection_name: str, query_te
         raise Exception(f"Query failed: {e}")
 
 
+import sys
+import json
+import chromadb
+from typing import Dict, Any, List
+import io
+import os
+from contextlib import redirect_stderr
+from io import StringIO
+
 def main():
     """Main function that handles stdin/stdout communication."""
     try:
@@ -100,7 +110,7 @@ def main():
             raise Exception(f"Invalid JSON input: {e}")
         
         # Validate required fields
-        required_fields = ["action", "host", "port", "collection_name", "query_text", "n_results"]
+        required_fields = ["action", "host", "port", "collection_name", "query_embeddings", "n_results"]
         for field in required_fields:
             if field not in request:
                 raise Exception(f"Missing required field: {field}")
@@ -115,7 +125,7 @@ def main():
         results = query_collection(
             client,
             request["collection_name"],
-            request["query_text"],
+            request["query_embeddings"],
             request["n_results"]
         )
         
