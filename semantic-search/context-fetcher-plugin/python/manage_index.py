@@ -191,8 +191,6 @@ def upload_all_batches(collection, batches: List[Dict]) -> Dict:
 def main():
     """Main execution function."""
     log_debug_json({"status": "debug", "message": "manage_index.py started", "success": True})
-    print(json.dumps({"status": "debug", "message": "manage_index.py started", "success": True}))
-    sys.stdout.flush()
     parser = argparse.ArgumentParser(description="Manage the ChromaDB index.")
     parser.add_argument("action", type=str, choices=["index", "clear"], help="The action to perform.")
     parser.add_argument("path", type=str, help="The path to the file or folder to index.")
@@ -203,35 +201,25 @@ def main():
     parser.add_argument("--folders", type=str, help="Comma-separated list of folders to index within the path.")
     args = parser.parse_args()
     log_debug_json({"status": "debug", "message": "Arguments parsed", "args": str(args), "success": True})
-    print(json.dumps({"status": "debug", "message": "Arguments parsed", "args": str(args), "success": True}))
-    sys.stdout.flush()
 
     client = connect_to_chroma(args.host, args.port)
     log_debug_json({"status": "debug", "message": "Connected to ChromaDB", "success": True})
-    print(json.dumps({"status": "debug", "message": "Connected to ChromaDB", "success": True}))
-    sys.stdout.flush()
     collection = get_or_create_collection(client, args.collection)
     log_debug_json({"status": "debug", "message": "Collection accessed", "success": True})
-    print(json.dumps({"status": "debug", "message": "Collection accessed", "success": True}))
-    sys.stdout.flush()
 
     if args.action == "clear":
         all_ids = collection.get()['ids']
         if all_ids:
             collection.delete(ids=all_ids)
-        log_debug_json({"status": "complete", "total_documents": collection.count(), "success": True})
-        print(json.dumps({"status": "complete", "total_documents": collection.count(), "success": True}))
+        response = {"status": "complete", "total_documents": collection.count(), "success": True}
+        print(json.dumps(response, ensure_ascii=False))
         sys.stdout.flush()
 
     elif args.action == "index":
         base_path = Path(args.path)
         log_debug_json({"status": "debug", "message": f"Finding markdown files in {base_path}", "success": True})
-        print(json.dumps({"status": "debug", "message": f"Finding markdown files in {base_path}", "success": True}))
-        sys.stdout.flush()
         all_files = find_markdown_files(base_path)
         log_debug_json({"status": "debug", "message": f"Found {len(all_files)} files", "success": True})
-        print(json.dumps({"status": "debug", "message": f"Found {len(all_files)} files", "success": True}))
-        sys.stdout.flush()
 
         files_to_index = []
         if args.folders:
@@ -240,44 +228,32 @@ def main():
                 if file_path.parent.name in target_folders:
                     files_to_index.append(file_path)
             log_debug_json({"status": "debug", "message": f"Filtered to {len(files_to_index)} files based on folders: {target_folders}", "success": True})
-            print(json.dumps({"status": "debug", "message": f"Filtered to {len(files_to_index)} files based on folders: {target_folders}", "success": True}))
-            sys.stdout.flush()
         else:
             files_to_index = all_files
             log_debug_json({"status": "debug", "message": "No folders specified, indexing all found files.", "success": True})
-            print(json.dumps({"status": "debug", "message": "No folders specified, indexing all found files.", "success": True}))
-            sys.stdout.flush()
 
         if not files_to_index:
-            log_debug_json({"status": "complete", "total_documents": collection.count(), "message": "No files to index.", "success": True })
-            print(json.dumps({"status": "complete", "total_documents": collection.count(), "message": "No files to index.", "success": True }))
+            response = {"status": "complete", "total_documents": collection.count(), "message": "No files to index.", "success": True }
+            print(json.dumps(response, ensure_ascii=False))
             sys.stdout.flush()
             return
         
         log_debug_json({"status": "debug", "message": f"Processing {len(files_to_index)} files into batches", "success": True})
-        print(json.dumps({"status": "debug", "message": f"Processing {len(files_to_index)} files into batches", "success": True}))
-        sys.stdout.flush()
         batches, processing_stats = process_files_into_batches(files_to_index, Path(args.vault_path))
         log_debug_json({"status": "debug", "message": f"Created {len(batches)} batches", "processing_stats": processing_stats, "success": True})
-        print(json.dumps({"status": "debug", "message": f"Created {len(batches)} batches", "processing_stats": processing_stats, "success": True}))
-        sys.stdout.flush()
 
         if not batches:
-            log_debug_json({"status": "complete", "total_documents": collection.count(), "message": "No valid documents to process!", "success": True })
-            print(json.dumps({"status": "complete", "total_documents": collection.count(), "message": "No valid documents to process!", "success": True }))
+            response = {"status": "complete", "total_documents": collection.count(), "message": "No valid documents to process!", "success": True }
+            print(json.dumps(response, ensure_ascii=False))
             sys.stdout.flush()
             return
         
         log_debug_json({"status": "debug", "message": f"Uploading {len(batches)} batches to Chroma", "success": True})
-        print(json.dumps({"status": "debug", "message": f"Uploading {len(batches)} batches to Chroma", "success": True}))
-        sys.stdout.flush()
         upload_stats = upload_all_batches(collection, batches)
         log_debug_json({"status": "debug", "message": "Upload complete", "upload_stats": upload_stats, "success": True})
-        print(json.dumps({"status": "debug", "message": "Upload complete", "upload_stats": upload_stats, "success": True}))
-        sys.stdout.flush()
         
-        log_debug_json({"status": "complete", "total_documents": collection.count(), "success": True})
-        print(json.dumps({"status": "complete", "total_documents": collection.count(), "success": True}))
+        response = {"status": "complete", "total_documents": collection.count(), "success": True}
+        print(json.dumps(response, ensure_ascii=False))
         sys.stdout.flush()
 
 
