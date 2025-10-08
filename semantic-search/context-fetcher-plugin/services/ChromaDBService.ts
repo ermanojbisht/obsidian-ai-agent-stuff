@@ -132,6 +132,10 @@ export class ChromaDBService {
             });
 
             python.on('close', (code) => {
+                console.log(`ChromaDBService: Python script ${scriptName} closed with code ${code}`);
+                console.log(`ChromaDBService: Python stdout for ${scriptName}:\n${stdout}`);
+                console.log(`ChromaDBService: Python stderr for ${scriptName}:\n${stderr}`);
+
                 if (stderr) {
                     console.error(`ChromaDBService: Python stderr for ${scriptName}:`, stderr);
                 }
@@ -149,7 +153,7 @@ export class ChromaDBService {
                     }
                     resolve(response);
                 } catch (error) {
-                    reject(new Error(`Failed to parse Python response: ${error}. Raw stdout: ${stdout}`));
+                    reject(new Error(`Failed to parse Python response: ${error}. Raw stdout: ${stdout}. Raw stderr: ${stderr}`));
                 }
             });
 
