@@ -1,20 +1,25 @@
-#!/usr/bin/env python3
-"""
-Manage the ChromaDB index.
-"""
-
 import os
 import sys
 import argparse
 import json
 from pathlib import Path
 from typing import List, Dict, Tuple
-import chromadb
-from sentence_transformers import SentenceTransformer
 
 # Configuration
 BATCH_SIZE = 50
 COLLECTION_NAME = "notes"
+EMBEDDING_MODEL = "all-MiniLM-L6-v2" # Define the embedding model to use
+
+try:
+    import chromadb
+    from sentence_transformers import SentenceTransformer
+    from chromadb.utils.embedding_functions import SentenceTransformerEmbeddingFunction
+except ImportError as e:
+    print(json.dumps({"status": "error", "message": f"ImportError: {e}. Please ensure all Python dependencies are installed.", "type": "ImportError"}))
+    sys.exit(1)
+except Exception as e:
+    print(json.dumps({"status": "error", "message": f"Unhandled exception during imports: {e}", "type": str(type(e).__name__)}))
+    sys.exit(1)
 
 def connect_to_chroma(host: str, port: int) -> chromadb.HttpClient:
     """Connect to ChromaDB server."""
@@ -23,7 +28,7 @@ def connect_to_chroma(host: str, port: int) -> chromadb.HttpClient:
         client.heartbeat()  # Test connection
         return client
     except Exception as e:
-        print(f"Failed to connect to ChromaDB: {e}")
+        print(json.dumps({"status": "error", "message": f"Failed to connect to ChromaDB: {e}", "type": "ChromaConnectionError"}))
         sys.exit(1)
 
 def find_markdown_files(path: Path) -> List[Path]:
@@ -118,10 +123,11 @@ def process_files_into_batches(files: List[Path], vault_path: Path) -> Tuple[Lis
 def get_or_create_collection(client, collection_name: str):
     """Get or create the Chroma collection."""
     try:
-        collection = client.get_or_create_collection(name=collection_name)
+        embedding_function = SentenceTransformerEmbeddingFunction(model_name=EMBEDDING_MODEL)
+        collection = client.get_or_create_collection(name=collection_name, embedding_function=embedding_function)
         return collection
     except Exception as e:
-        print(f"Error creating/accessing collection: {e}")
+        print(json.dumps({"status": "error", "message": f"Error creating/accessing collection: {e}", "type": "ChromaCollectionError"}))
         sys.exit(1)
 
 def upsert_batch_to_chroma(collection, batch: Dict) -> bool:
@@ -134,7 +140,7 @@ def upsert_batch_to_chroma(collection, batch: Dict) -> bool:
         )
         return True
     except Exception as e:
-        print(f"[ERROR] Error upserting batch: {e}")
+        print(json.dumps({"status": "error", "message": f"Error upserting batch: {e}", "batch_ids": batch["ids"]}))
         return False
 
 def upload_all_batches(collection, batches: List[Dict]) -> Dict:
@@ -147,7 +153,7 @@ def upload_all_batches(collection, batches: List[Dict]) -> Dict:
     }
     
     for i, batch in enumerate(batches, 1):
-        print(json.dumps({"status": "progress", "processed": i, "total": len(batches)}))
+        # print(json.dumps({"status": "progress", "processed": i, "total": len(batches)})) # This is for progress, keep it
         if upsert_batch_to_chroma(collection, batch):
             upload_stats["successful_uploads"] += 1
             upload_stats["total_documents"] += len(batch['documents'])
@@ -158,6 +164,7 @@ def upload_all_batches(collection, batches: List[Dict]) -> Dict:
 
 def main():
     """Main execution function."""
+    print(json.dumps({"status": "debug", "message": "manage_index.py started"}))
     parser = argparse.ArgumentParser(description="Manage the ChromaDB index.")
     parser.add_argument("action", type=str, choices=["index", "clear"], help="The action to perform.")
     parser.add_argument("path", type=str, help="The path to the file or folder to index.")
@@ -165,10 +172,14 @@ def main():
     parser.add_argument("--host", type=str, default="localhost", help="The ChromaDB host.")
     parser.add_argument("--port", type=int, default=8000, help="The ChromaDB port.")
     parser.add_argument("--collection", type=str, default=COLLECTION_NAME, help="The ChromaDB collection name.")
+    parser.add_argument("--folders", type=str, help="Comma-separated list of folders to index within the path.")
     args = parser.parse_args()
+    print(json.dumps({"status": "debug", "message": "Arguments parsed", "args": str(args)}))
 
     client = connect_to_chroma(args.host, args.port)
+    print(json.dumps({"status": "debug", "message": "Connected to ChromaDB"}))
     collection = get_or_create_collection(client, args.collection)
+    print(json.dumps({"status": "debug", "message": "Collection accessed"}))
 
     if args.action == "clear":
         all_ids = collection.get()['ids']
@@ -177,19 +188,45 @@ def main():
         print(json.dumps({"status": "complete", "total_documents": collection.count()}))
 
     elif args.action == "index":
-        files = find_markdown_files(Path(args.path))
-        if not files:
+        base_path = Path(args.path)
+        print(json.dumps({"status": "debug", "message": f"Finding markdown files in {base_path}"}))
+        all_files = find_markdown_files(base_path)
+        print(json.dumps({"status": "debug", "message": f"Found {len(all_files)} files"}))
+
+        files_to_index = []
+        if args.folders:
+            target_folders = [f.strip() for f in args.folders.split(',') if f.strip()]
+            for file_path in all_files:
+                if file_path.parent.name in target_folders:
+                    files_to_index.append(file_path)
+            print(json.dumps({"status": "debug", "message": f"Filtered to {len(files_to_index)} files based on folders: {target_folders}"}))
+        else:
+            files_to_index = all_files
+            print(json.dumps({"status": "debug", "message": "No folders specified, indexing all found files."}))
+
+        if not files_to_index:
+            print(json.dumps({"status": "complete", "total_documents": collection.count(), "message": "No files to index." }))
             return
         
-        batches, processing_stats = process_files_into_batches(files, Path(args.vault_path))
-        
+        print(json.dumps({"status": "debug", "message": f"Processing {len(files_to_index)} files into batches"}))
+        batches, processing_stats = process_files_into_batches(files_to_index, Path(args.vault_path))
+        print(json.dumps({"status": "debug", "message": f"Created {len(batches)} batches", "processing_stats": processing_stats}))
+
         if not batches:
-            print("No valid documents to process!")
+            print(json.dumps({"status": "complete", "total_documents": collection.count(), "message": "No valid documents to process!" }))
             return
         
+        print(json.dumps({"status": "debug", "message": f"Uploading {len(batches)} batches to Chroma"}))
         upload_stats = upload_all_batches(collection, batches)
+        print(json.dumps({"status": "debug", "message": "Upload complete", "upload_stats": upload_stats}))
         
         print(json.dumps({"status": "complete", "total_documents": collection.count()}))
 
+
+# Original main execution block
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Exception as e:
+        print(json.dumps({"status": "error", "message": f"Unhandled exception in manage_index.py: {e}", "type": str(type(e).__name__)}))
+        sys.exit(1)

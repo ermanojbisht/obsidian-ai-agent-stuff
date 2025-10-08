@@ -105,7 +105,79 @@ export class ChromaDBService {
         });
     }
 
+    private async runPythonScriptWithArgs(scriptName: string, args: string[]): Promise<any> {
+        return new Promise((resolve, reject) => {
+            const scriptPath = this.settings.pluginDir
+                ? require('path').join(this.settings.pluginDir, 'python', scriptName)
+                : require('path').join(__dirname, 'python', scriptName);
+
+            const pythonArgs = [scriptPath, ...args];
+
+            const python = spawn(this.settings.pythonPath, pythonArgs, {
+                stdio: ['pipe', 'pipe', 'pipe'],
+                windowsHide: true
+            });
+
+            let stdout = '';
+            let stderr = '';
+
+            python.stdout.on('data', (data) => {
+                const chunk = data.toString('utf8');
+                stdout += chunk;
+            });
+
+            python.stderr.on('data', (data) => {
+                const chunk = data.toString('utf8');
+                stderr += chunk;
+            });
+
+            python.on('close', (code) => {
+                if (stderr) {
+                    console.error(`ChromaDBService: Python stderr for ${scriptName}:`, stderr);
+                }
+
+                if (code !== 0) {
+                    reject(new Error(`Python process exited with code ${code}: ${stderr}`));
+                    return;
+                }
+
+                try {
+                    const response = JSON.parse(stdout);
+                    if (!response.success) {
+                        reject(new Error(response.error));
+                        return;
+                    }
+                    resolve(response);
+                } catch (error) {
+                    reject(new Error(`Failed to parse Python response: ${error}. Raw stdout: ${stdout}`));
+                }
+            });
+
+            python.on('error', (error) => {
+                const fs = require('fs');
+                const path = require('path');
+
+                let errorMessage = `Failed to spawn Python process: ${error}`;
+                const pythonScriptPath = this.settings.pluginDir
+                    ? path.join(this.settings.pluginDir, 'python', scriptName)
+                    : path.join(__dirname, 'python', scriptName);
+
+                errorMessage += `\nPython path: ${this.settings.pythonPath}`;
+                errorMessage += `\nScript path: ${pythonScriptPath}`;
+                errorMessage += `\nCurrent directory: ${__dirname}`;
+                errorMessage += `\nPython exists: ${fs.existsSync(this.settings.pythonPath)}`;
+                errorMessage += `\nScript exists: ${fs.existsSync(pythonScriptPath)}`;
+
+                if (error.message.includes('ENOENT')) {
+                    errorMessage += `\nENOENT means "file not found" - check paths above.`;
+                }
+                reject(new Error(errorMessage));
+            });
+        });
+    }
+
     async searchSimilarContent(queryText: string): Promise<any> {
+
         try {
             const queryEmbeddings = await this.generateEmbedding(queryText);
 
@@ -194,35 +266,64 @@ export class ChromaDBService {
         }
     }
 
-    async clearCollection(): Promise<any> {
-        return this.runPythonScript('manage_index.py', 'clear', {});
+    async clearCollection(vaultPath: string): Promise<any> {
+        const args = [
+            'clear',
+            vaultPath, // Dummy path, as it's required by argparse but not used for clear
+            vaultPath,
+            '--host', this.settings.host,
+            '--port', this.settings.port.toString(),
+            '--collection', this.settings.collectionName
+        ];
+        return this.runPythonScriptWithArgs('manage_index.py', args);
     }
 
     async indexVault(vaultPath: string): Promise<any> {
-        const payload = {
-            vault_path: vaultPath,
-            folders_to_index: this.settings.foldersToIndex.split(',').map(f => f.trim()).filter(f => f.length > 0)
-        };
-        return this.runPythonScript('manage_index.py', 'index', payload);
+        const folders = this.settings.foldersToIndex.split(',').map(f => f.trim()).filter(f => f.length > 0);
+        const args = [
+            'index',
+            vaultPath, // Path to the vault itself
+            vaultPath,
+            '--host', this.settings.host,
+            '--port', this.settings.port.toString(),
+            '--collection', this.settings.collectionName,
+            '--folders', folders.join(',') // Pass folders as a comma-separated string
+        ];
+        return this.runPythonScriptWithArgs('manage_index.py', args);
     }
 
-    async indexFile(filePath: string): Promise<any> {
-        const payload = {
-            file_path: filePath
-        };
-        return this.runPythonScript('manage_index.py', 'index', payload);
+    async indexFile(filePath: string, vaultPath: string): Promise<any> {
+        const args = [
+            'index',
+            filePath,
+            vaultPath,
+            '--host', this.settings.host,
+            '--port', this.settings.port.toString(),
+            '--collection', this.settings.collectionName
+        ];
+        return this.runPythonScriptWithArgs('manage_index.py', args);
     }
 
-    async indexSpecificFolder(folderPath: string): Promise<any> {
-        const payload = {
-            vault_path: this.settings.pluginDir, // Assuming pluginDir can be used to derive vault path or passed explicitly
-            folders_to_index: [folderPath]
-        };
-        return this.runPythonScript('manage_index.py', 'index', payload);
+    async indexSpecificFolder(folderPath: string, vaultPath: string): Promise<any> {
+        const args = [
+            'index',
+            vaultPath, // The base path for finding files
+            vaultPath,
+            '--host', this.settings.host,
+            '--port', this.settings.port.toString(),
+            '--collection', this.settings.collectionName,
+            '--folders', folderPath // Pass the specific folder to index
+        ];
+        return this.runPythonScriptWithArgs('manage_index.py', args);
     }
 
     async getDocumentsCount(): Promise<number> {
-        const response = await this.runPythonScript('get_doc_count.py', 'get_count', {});
+        const args = [
+            '--host', this.settings.host,
+            '--port', this.settings.port.toString(),
+            '--collection', this.settings.collectionName
+        ];
+        const response = await this.runPythonScriptWithArgs('get_doc_count.py', args);
         return response.total_documents || 0;
     }
 

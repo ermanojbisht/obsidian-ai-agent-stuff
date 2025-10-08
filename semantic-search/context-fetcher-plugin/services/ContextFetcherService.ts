@@ -40,10 +40,10 @@ export class ContextFetcherService {
         }
     }
 
-    async clearAllIndexes(): Promise<any> {
+    async clearAllIndexes(vaultPath: string): Promise<any> {
         try {
             new Notice('Clearing all indexes...');
-            const result = await this.chromaService.clearCollection();
+            const result = await this.chromaService.clearCollection(vaultPath);
             new Notice('All indexes cleared.');
             return result;
         } catch (error) {
@@ -66,10 +66,10 @@ export class ContextFetcherService {
         }
     }
 
-    async indexCurrentFile(filePath: string): Promise<any> {
+    async indexCurrentFile(filePath: string, vaultPath: string): Promise<any> {
         try {
             new Notice(`Indexing file: ${filePath}...`);
-            const result = await this.chromaService.indexFile(filePath);
+            const result = await this.chromaService.indexFile(filePath, vaultPath);
             new Notice(`File ${filePath} indexed.`);
             return result;
         } catch (error) {
@@ -79,10 +79,10 @@ export class ContextFetcherService {
         }
     }
 
-    async indexFolder(folderPath: string): Promise<any> {
+    async indexFolder(folderPath: string, vaultPath: string): Promise<any> {
         try {
             new Notice(`Indexing folder: ${folderPath}...`);
-            const result = await this.chromaService.indexSpecificFolder(folderPath);
+            const result = await this.chromaService.indexSpecificFolder(folderPath, vaultPath);
             new Notice(`Folder ${folderPath} indexed.`);
             return result;
         } catch (error) {

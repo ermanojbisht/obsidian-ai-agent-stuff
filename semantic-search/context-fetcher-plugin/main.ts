@@ -10,9 +10,10 @@ interface ContextFetcherPluginSettings {
 	pythonPath: string;
 	searchMaxResults: number;
 	foldersToIndex: string;
-	    totalDocuments: number;
-	    lastIndexedDate: number; // Timestamp
-	}
+	totalDocuments: number;
+	lastIndexedDate: number; // Timestamp
+}
+
 const DEFAULT_SETTINGS: ContextFetcherPluginSettings = {
 	chromaHost: 'localhost',
 	chromaPort: 8000,
@@ -20,9 +21,10 @@ const DEFAULT_SETTINGS: ContextFetcherPluginSettings = {
 	pythonPath: 'python3',
 	searchMaxResults: 10,
 	foldersToIndex: 'learnings,Meetings,My Daily Notes,my_prompts,PWD',
-	    totalDocuments: 0,
-	    lastIndexedDate: 0,
-	};
+	totalDocuments: 0,
+	lastIndexedDate: 0,
+};
+
 export default class ContextFetcherPlugin extends Plugin {
 	settings: ContextFetcherPluginSettings;
 	service: ContextFetcherService;
@@ -32,16 +34,17 @@ export default class ContextFetcherPlugin extends Plugin {
 		await this.loadSettings();
 		const vaultPath = (this.app.vault.adapter as FileSystemAdapter).getBasePath();
 		const pluginDir = require('path').join(vaultPath, '.obsidian', 'plugins', 'context-fetcher-plugin');
-		        const chromaSettings: ChromaDBSettings = {
-		            host: this.settings.chromaHost,
-		            port: this.settings.chromaPort,
-		            collectionName: this.settings.chromaCollectionName,
-		            pythonPath: this.settings.pythonPath,
-		            pluginDir: pluginDir,
-		            searchMaxResults: this.settings.searchMaxResults,
-		            foldersToIndex: this.settings.foldersToIndex
-		        };
-		        this.service = new ContextFetcherService(chromaSettings);
+		const chromaSettings: ChromaDBSettings = {
+			host: this.settings.chromaHost,
+			port: this.settings.chromaPort,
+			collectionName: this.settings.chromaCollectionName,
+			pythonPath: this.settings.pythonPath,
+			pluginDir: pluginDir,
+			searchMaxResults: this.settings.searchMaxResults,
+			foldersToIndex: this.settings.foldersToIndex
+		};
+		this.service = new ContextFetcherService(chromaSettings);
+
 		this.registerView(
 			VIEW_TYPE_CONTEXT_FETCHER,
 			(leaf) => {
@@ -121,65 +124,76 @@ export default class ContextFetcherPlugin extends Plugin {
 		const updateContext = (items: ContextItem[]) => contextView && contextView.updateContext(items);
 
 		if (contextView) contextView.setLoading(true);
-		        await this.service.fetchContext({
-		            app: this.app,
-		            file,
-		            setLoading,
-		            updateContext
-		        });	}
+		await this.service.fetchContext({
+			app: this.app,
+			file,
+			setLoading,
+			updateContext
+		});
+	}
 
-	        async updateTotalDocumentsSetting() {
-	            const count = await this.service.getDocumentsCount();
-	            this.settings.totalDocuments = count;
-	            this.settings.lastIndexedDate = Date.now(); // Update timestamp
-	            await this.saveSettings();
-	            if (this.contextView) {
-	                this.contextView.updateTotalDocuments(count);
-	                this.contextView.updateLastIndexedDate(this.settings.lastIndexedDate);
-	            }
-	        }	
-	    async reindexAllNotes() {
-	        try {
-	            new Notice('Starting full reindex...');
-	            await this.service.clearAllIndexes();
-	            const vaultPath = (this.app.vault.adapter as FileSystemAdapter).getBasePath();
-	            await this.service.indexAllFolders(vaultPath);
-	            await this.updateTotalDocumentsSetting();
-	            new Notice('Full reindex complete.');
-	        } catch (error) {
-	            console.error('Error during full reindex:', error);
-	            new Notice(`Reindex failed: ${error.message}`);
-	        }
-	    }
-	
-	    async indexCurrentNote() {
-	        const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
-	        if (!activeView || !activeView.file) {
-	            new Notice('No active note to index.');
-	            return;
-	        }
-	        try {
-	            new Notice(`Indexing current note: ${activeView.file.basename}...`);
-	            await this.service.indexCurrentFile(activeView.file.path);
-	            await this.updateTotalDocumentsSetting();
-	            new Notice('Current note indexed.');
-	                } catch (error) {
-	                    console.error('Error indexing current note:', error);
-	                    new Notice(`Indexing failed: ${error.message}`);
-	                }
-	            }
-	        
-	            async indexFolder(folderPath: string) {
-	                try {
-	                    await this.service.indexFolder(folderPath);
-	                    await this.updateTotalDocumentsSetting();
-	                } catch (error) {
-	                    console.error('Error indexing folder:', error);
-	                    new Notice(`Indexing folder failed: ${error.message}`);
-	                }
-	            }
-	        
-	            onunload() {		this.app.workspace.detachLeavesOfType(VIEW_TYPE_CONTEXT_FETCHER);
+	async updateTotalDocumentsSetting() {
+		const count = await this.service.getDocumentsCount();
+		this.settings.totalDocuments = count;
+		this.settings.lastIndexedDate = Date.now(); // Update timestamp
+		await this.saveSettings();
+		if (this.contextView) {
+			this.contextView.updateTotalDocuments(count);
+			this.contextView.updateLastIndexedDate(this.settings.lastIndexedDate);
+		}
+	}
+
+	async reindexAllNotes() {
+		try {
+			new Notice('Starting full reindex...');
+			const vaultPath = (this.app.vault.adapter as FileSystemAdapter).getBasePath();
+			await this.service.clearAllIndexes(vaultPath);
+			await this.service.indexAllFolders(vaultPath);
+			await this.updateTotalDocumentsSetting();
+			new Notice('Full reindex complete.');
+		} catch (error) {
+			console.error('Error during full reindex:', error);
+			new Notice(`Reindex failed: ${error.message}`);
+		}
+	}
+
+	async indexCurrentNote() {
+		let activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
+		if (!activeView) {
+			const allLeaves = this.app.workspace.getLeavesOfType('markdown');
+			if (allLeaves.length > 0) {
+				activeView = allLeaves[0].view as MarkdownView;
+			}
+		}
+		if (!activeView || !activeView.file) {
+			new Notice('No active note to index.');
+			return;
+		}
+		        const file = activeView.file;
+		        try {
+		            // new Notice(`Indexing current note: ${file.basename}...`); // Removed initial notice
+		            const vaultPath = (this.app.vault.adapter as FileSystemAdapter).getBasePath();
+		            await this.service.indexCurrentFile(file.path, vaultPath);
+		            await this.updateTotalDocumentsSetting();
+		            new Notice(`Current note '${file.basename}' indexed successfully.`);
+		        } catch (error) {
+		            console.error('Error indexing current note:', error);
+		            new Notice(`Indexing of '${file.basename}' failed: ${error.message}`);
+		        }	}
+
+	async indexFolder(folderPath: string) {
+		try {
+			const vaultPath = (this.app.vault.adapter as FileSystemAdapter).getBasePath();
+			await this.service.indexFolder(folderPath, vaultPath);
+			await this.updateTotalDocumentsSetting();
+		} catch (error) {
+			console.error('Error indexing folder:', error);
+			new Notice(`Indexing folder failed: ${error.message}`);
+		}
+	}
+
+	onunload() {
+		this.app.workspace.detachLeavesOfType(VIEW_TYPE_CONTEXT_FETCHER);
 	}
 
 	async loadSettings(): Promise<ContextFetcherPluginSettings> {
