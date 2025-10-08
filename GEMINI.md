@@ -41,6 +41,7 @@ The following folders in the vault will be indexed:
 - **Shell Scripting:** We found that using shell scripts to create large JSON payloads is not reliable and can lead to errors like "Argument list too long". We learned that using a more robust language like Python is better for this kind of task.
 - **`onnxruntime` is a problematic dependency.** It's very noisy and difficult to suppress its warnings. It's better to avoid it if possible.
 - **The `sentence-transformers` library is a good alternative for generating embeddings.** It's easy to use and doesn't have the same issues as `onnxruntime`.
+- **`os.fsync(sys.stdout.fileno())` Incompatibility:** Attempting to use `os.fsync(sys.stdout.fileno())` for aggressive `stdout` flushing in the Python script resulted in an `OSError: [Errno 22] Invalid argument` when executed by the Node.js plugin. This indicates that `sys.stdout` is not connected to a valid file descriptor in the plugin's execution environment, and `os.fsync` should not be used in this context.
 
 Now need to build plugin 'context-fetcher-plugin' 
 Navigate to the `context-fetcher-plugin` directory.
@@ -48,12 +49,15 @@ Navigate to the `context-fetcher-plugin` directory.
 - [x] **Step 1: 4 pyhton files should be created to do tasks through plugin**
   - [x] `generate_embedding.py` — Converts query text into vector embeddings.
   - [x] `chroma_query.py` — Queries ChromaDB for similar embeddings.
-  - [x] `manage_index.py` — Indexes or clears ChromaDB collections.
+  - [x] `manage_index.py` — Indexes or clears ChromaDB collections. (Confirmed working when run directly, but not via plugin)
   - [x] `get_doc_count.py` — Returns the total document count in Chroma.
   
 - [ ] **Step 2: 2 services ChromaDBService.ts, ContextFetcherService.ts**
 - [ ] **Step 3: ContextFetcherView.ts **
 - [ ] **Step 4: main.ts  **
+
+**Current Status: Plugin Integration Issue**
+The Python script `manage_index.py` functions correctly when executed directly from the command line, producing valid JSON output to `stdout`. However, when the Node.js plugin attempts to execute `manage_index.py`, the `stdout` received by the plugin is empty, leading to a `SyntaxError: Unexpected end of JSON input` in the TypeScript code. This indicates a problem with how the Node.js `child_process.spawn` is capturing the Python script's `stdout`.
 
 plz follow developer guide given at developer_guide.md.
 Some Files and Code is already created but need to be checked wether it's working as intended or not . if any rectification needed then rectify it or rebuild it.
@@ -62,3 +66,22 @@ Some Files and Code is already created but need to be checked wether it's workin
 At each successfull build copy plugin files to /home/manoj/learning_vault/.obsidian/plugins/context-fetcher-plugin to test things .
 
 do not touch other folder in repo as they are not required for current task.
+
+
+if u are in folder 
+/media/manoj/datadisk_linux/obsidian-ai-agent-stuff/semantic-search/context-fetcher-plugin/python
+
+1- All Files in vault
+
+python3 manage_index.py index /home/manoj/learning_vault/  /home/manoj/learning_vault/ --host localhost --port 8000 --collection notes 
+
+2- Files in desired Folder
+
+python3 manage_index.py index /home/manoj/learning_vault/  /home/manoj/learning_vault/ --host localhost --port 8000 --collection notes --folders "learnings,My Daily Notes"
+
+3- Particular file
+
+python3 manage_index.py index /home/manoj/learning_vault/Ampri.md /home/manoj/learning_vault/ --host localhost --port 8000 --collection notes 
+
+otherwise use 
+/media/manoj/datadisk_linux/obsidian-ai-agent-stuff/semantic-search/context-fetcher-plugin/python/manage_index.py instead of manage_index.py
