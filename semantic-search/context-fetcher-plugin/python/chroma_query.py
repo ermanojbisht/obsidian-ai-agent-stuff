@@ -52,24 +52,26 @@ def connect_to_chroma(host: str, port: int) -> chromadb.HttpClient:
     """Connect to ChromaDB server."""
     try:
         client = chromadb.HttpClient(host=host, port=port)
-        client.heartbeat()  # Test connection
+        client.heartbeat()  # Test connection to ensure the server is reachable.
         return client
     except Exception as e:
         raise Exception(f"Failed to connect to ChromaDB at {host}:{port}: {e}")
 
 
 def query_collection(client: chromadb.HttpClient, collection_name: str, query_embeddings: List[List[float]], n_results: int) -> List[Dict[str, Any]]:
-    """Query the ChromaDB collection."""
+    """Query the ChromaDB collection with given embeddings and return formatted results."""
     try:
+        # Get the specified collection from the ChromaDB client.
         collection = client.get_collection(name=collection_name)
         
+        # Perform the query using the provided embeddings.
         results = collection.query(
             query_embeddings=query_embeddings,
             n_results=n_results,
-            include=["documents", "metadatas", "distances"]
+            include=["documents", "metadatas", "distances"] # Request documents, metadatas, and distances.
         )
         
-        # Transform results into a more convenient format
+        # Transform raw ChromaDB results into a more convenient list of dictionaries.
         formatted_results = []
         if results['ids'] and len(results['ids']) > 0:
             for i in range(len(results['ids'][0])):
@@ -86,42 +88,34 @@ def query_collection(client: chromadb.HttpClient, collection_name: str, query_em
         raise Exception(f"Query failed: {e}")
 
 
-import sys
-import json
-import chromadb
-from typing import Dict, Any, List
-import io
-import os
-from contextlib import redirect_stderr
-from io import StringIO
-
 def main():
-    """Main function that handles stdin/stdout communication."""
+    """Main function that handles stdin/stdout communication for ChromaDB queries."""
     try:
-        # Read input from stdin
+        # Read the entire input from stdin, expected to be a JSON string.
         input_data = sys.stdin.read().strip()
         if not input_data:
             raise Exception("No input provided")
         
-        # Parse JSON input
+        # Parse the JSON input.
         try:
             request = json.loads(input_data)
         except json.JSONDecodeError as e:
             raise Exception(f"Invalid JSON input: {e}")
         
-        # Validate required fields
+        # Validate that all required fields are present in the request.
         required_fields = ["action", "host", "port", "collection_name", "query_embeddings", "n_results"]
         for field in required_fields:
             if field not in request:
                 raise Exception(f"Missing required field: {field}")
         
+        # Ensure the requested action is 'query'.
         if request["action"] != "query":
             raise Exception(f"Unsupported action: {request['action']}")
         
-        # Connect to ChromaDB
+        # Establish connection to ChromaDB.
         client = connect_to_chroma(request["host"], request["port"])
         
-        # Perform query
+        # Execute the query on the ChromaDB collection.
         results = query_collection(
             client,
             request["collection_name"],
@@ -129,20 +123,20 @@ def main():
             request["n_results"]
         )
         
-        # Return success response
+        # Construct a success response with the query results.
         response = {
             "success": True,
             "results": results
         }
         
     except Exception as e:
-        # Return error response
+        # If any error occurs, construct an error response.
         response = {
             "success": False,
             "error": str(e)
         }
     
-    # Output JSON response to stdout
+    # Output the JSON response to stdout. This is the only output to stdout.
     print(json.dumps(response, ensure_ascii=False))
 
 

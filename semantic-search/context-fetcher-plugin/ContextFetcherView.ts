@@ -1,27 +1,48 @@
-import { ItemView, WorkspaceLeaf, Notice, TFile, App } from 'obsidian';
-import { ContextFetcherService, ContextItem } from './services/ContextFetcherService';
-
+/**
+ * Defines the view type for the Semantic Context Fetcher plugin.
+ */
 export const VIEW_TYPE_CONTEXT_FETCHER = "context-fetcher-view";
 
+/**
+ * ContextFetcherView is an Obsidian ItemView that displays semantic search results and indexing controls.
+ * It provides a user interface for interacting with the ChromaDB service.
+ */
 export class ContextFetcherView extends ItemView {
-    private contextItems: ContextItem[] = [];
-    private isLoading = false;
-    private plugin: any;
+    private contextItems: ContextItem[] = []; // Stores the context items to be displayed.
+    private isLoading = false; // Indicates if data is currently being loaded.
+    private plugin: any; // Reference to the main plugin instance.
 
     constructor(leaf: WorkspaceLeaf, plugin: any) {
         super(leaf);
         this.plugin = plugin;
     }
 
+    /**
+     * Returns the type of this view.
+     * @returns The view type string.
+     */
     getViewType() { return VIEW_TYPE_CONTEXT_FETCHER; }
+
+    /**
+     * Returns the display name of this view.
+     * @returns The display name string.
+     */
     getDisplayText() { return "Semantic Context Fetcher"; }
 
+    /**
+     * Formats a timestamp into a localized date and time string.
+     * @param timestamp The timestamp to format.
+     * @returns A formatted date string or 'Never' if the timestamp is falsy.
+     */
     private formatDate(timestamp: number): string {
         if (!timestamp) return 'Never';
         const date = new Date(timestamp);
         return date.toLocaleString(); // Adjust format as needed
     }
 
+    /**
+     * Called when the view is opened. Sets up the UI elements and event listeners.
+     */
     async onOpen() {
         const container = this.containerEl.children[1];
         container.empty();
@@ -99,18 +120,33 @@ export class ContextFetcherView extends ItemView {
         this.renderContent();
     }
 
+    /**
+     * Called when the view is closed.
+     */
     async onClose() { }
 
+    /**
+     * Sets the loading state and re-renders the view.
+     * @param loading True if content is loading, false otherwise.
+     */
     setLoading(loading: boolean) {
         this.isLoading = loading;
         this.renderContent();
     }
 
+    /**
+     * Updates the context items and re-renders the view.
+     * @param items An array of ContextItem objects to display.
+     */
     updateContext(items: ContextItem[]) {
         this.contextItems = items;
         this.renderContent();
     }
 
+    /**
+     * Updates the displayed total document count.
+     * @param count The new total document count.
+     */
     updateTotalDocuments(count: number) {
         const totalDocsSpan = this.containerEl.querySelector('.total-docs-value');
         if (totalDocsSpan) {
@@ -118,6 +154,10 @@ export class ContextFetcherView extends ItemView {
         }
     }
 
+    /**
+     * Updates the displayed last indexed date.
+     * @param timestamp The new timestamp for the last indexed date.
+     */
     updateLastIndexedDate(timestamp: number) {
         const lastUpdatedSpan = this.containerEl.querySelector('.last-updated-value');
         if (lastUpdatedSpan) {
@@ -125,11 +165,15 @@ export class ContextFetcherView extends ItemView {
         }
     }
 
+    /**
+     * Renders the main content of the view, including loading messages, empty messages, or context items.
+     */
     private renderContent() {
         const container = this.containerEl.children[1];
         const scrollableContainer = container.querySelector('.context-scrollable-content');
         if (!scrollableContainer) return;
         
+        // Clear existing content before re-rendering.
         const existingContent = scrollableContainer.querySelector('.context-content');
         if (existingContent) existingContent.remove();
         
@@ -143,6 +187,7 @@ export class ContextFetcherView extends ItemView {
             contentDiv.createEl('div', { text: 'No context items. Fetch context for a note to see relevant information here.', cls: 'empty-message' });
             return;
         }
+        // Render each context item.
         this.contextItems.forEach((item) => {
             const itemDiv = contentDiv.createDiv({ cls: 'context-item' });
             const noteDiv = itemDiv.createDiv({ cls: 'context-note' });
@@ -168,4 +213,3 @@ export class ContextFetcherView extends ItemView {
             reasonDiv.createEl('small', { text: item.reason, cls: 'distance-info' });
         });
     }
-}
